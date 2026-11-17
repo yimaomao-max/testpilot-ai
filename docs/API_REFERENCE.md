@@ -1,5 +1,7 @@
 # TestPilot AI · API 参考
 
+**语言 · Languages:** [中文](API_REFERENCE.md) | [English](API_REFERENCE.en.md)
+
 基础 URL 默认为 `http://localhost:3000`（开发环境）。所有 JSON 接口 `Content-Type: application/json`，除非另有说明。
 
 **运行时**：API Routes 使用 Node.js runtime（Playwright 与文件 IO 需要）。

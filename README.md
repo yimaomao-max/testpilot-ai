@@ -13,6 +13,8 @@
 [![Playwright](https://img.shields.io/badge/Playwright-1.62-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**语言 · Languages:** [中文](README.md) | [English](README.en.md)
+
 [快速开始](#-快速开始) · [功能一览](#-功能一览) · [架构](#-系统架构) · [文档](#-文档导航) · [路线图](#-路线图)
 
 </div>
@@ -61,7 +63,7 @@
 | 测试报告 | `/reports/[runId]` | 深色主题、失败聚类、AI 分析、截图 |
 | 登录 | `/login` | Supabase 云端模式 |
 
-更细的逐步说明见 **[用户使用指南](docs/USER_GUIDE.md)**。
+更细的逐步说明见 **[用户使用指南](docs/USER_GUIDE.md)**（[English](docs/USER_GUIDE.en.md)）。
 
 ---
 
@@ -217,7 +219,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 | `GET` | `/api/projects/[id]/traceability` | 需求–用例–执行追溯 |
 | `GET` | `/api/auth/status` | 认证状态 |
 
-完整参数与响应示例见 **[API 参考](docs/API_REFERENCE.md)**。
+完整参数与响应示例见 **[API 参考](docs/API_REFERENCE.md)**（[English](docs/API_REFERENCE.en.md)）。
 
 ---
 
@@ -271,8 +273,8 @@ testpilot-ai/
 
 | 文档 | 内容 |
 |------|------|
-| [用户使用指南](docs/USER_GUIDE.md) | 从安装到第一次跑通的全流程 |
-| [API 参考](docs/API_REFERENCE.md) | 主要 REST 端点说明 |
+| [用户使用指南](docs/USER_GUIDE.md) · [EN](docs/USER_GUIDE.en.md) | 从安装到第一次跑通的全流程 |
+| [API 参考](docs/API_REFERENCE.md) · [EN](docs/API_REFERENCE.en.md) | 主要 REST 端点说明 |
 | [PRD MVP](docs/01-PRD-MVP.md) | 产品需求与页面规格 |
 | [技术架构](docs/02-技术架构与数据库设计.md) | 演进路径与 Supabase 模型 |
 | [开发任务拆解](docs/03-开发任务拆解.md) | 迭代计划 |

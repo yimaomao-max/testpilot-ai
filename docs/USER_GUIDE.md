@@ -1,5 +1,7 @@
 # TestPilot AI · 用户使用指南
 
+**语言 · Languages:** [中文](USER_GUIDE.md) | [English](USER_GUIDE.en.md)
+
 本指南带你从零到第一次成功执行测试，并说明进阶能力（生成向导、报告、导出、插件、云端模式）。
 
 ---
