@@ -1,6 +1,17 @@
 ﻿const $ = (id) => document.getElementById(id);
 const msg = (text, cls = "") => { $("msg").textContent = text; $("msg").className = cls; };
 
+const DEFAULT_API = "http://localhost:3000";
+
+async function getApiBase() {
+  const stored = await chrome.storage.sync.get({ apiBase: DEFAULT_API });
+  const fromInput = ($("apiBase") && $("apiBase").value.trim()) || "";
+  const base = (fromInput || stored.apiBase || DEFAULT_API).replace(/\/$/, "");
+  if ($("apiBase") && $("apiBase").value.trim() !== base) $("apiBase").value = base;
+  await chrome.storage.sync.set({ apiBase: base });
+  return base;
+}
+
 let currentSteps = [];
 let verifyResults = null;
 
@@ -123,7 +134,8 @@ $("export").addEventListener("click", () => {
 
 async function loadProjects() {
   try {
-    const data = await (await fetch("http://localhost:3100/api/projects")).json();
+    const api = await getApiBase();
+    const data = await (await fetch(api + "/api/projects")).json();
     for (const p of data.projects ?? []) {
       const opt = document.createElement("option");
       opt.value = p.id;
@@ -140,7 +152,8 @@ $("project").addEventListener("change", async () => {
   const pid = $("project").value;
   if (!pid) return;
   try {
-    const data = await (await fetch("http://localhost:3100/api/requirements?projectId=" + pid)).json();
+    const api = await getApiBase();
+    const data = await (await fetch(api + "/api/requirements?projectId=" + pid)).json();
     for (const r of data.requirements ?? []) {
       const opt = document.createElement("option");
       opt.value = r.id;
@@ -168,7 +181,8 @@ $("save").addEventListener("click", async () => {
   };
   msg("保存中…");
   try {
-    const res = await fetch("http://localhost:3100/api/tests", {
+    const api = await getApiBase();
+    const res = await fetch(api + "/api/tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -178,7 +192,7 @@ $("save").addEventListener("click", async () => {
     $("msg").textContent = "已创建用例：";
     $("msg").className = "ok";
     const link = document.createElement("a");
-    link.href = "http://localhost:3100/tests/" + data.test.id;
+    link.href = api + "/tests/" + data.test.id;
     link.textContent = data.test.name;
     link.target = "_blank";
     $("msg").appendChild(document.createElement("br"));
@@ -191,5 +205,13 @@ $("save").addEventListener("click", async () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && (changes.steps || changes.mode)) refresh();
 });
-loadProjects();
+chrome.storage.sync.get({ apiBase: DEFAULT_API }, (stored) => {
+  if ($("apiBase")) $("apiBase").value = stored.apiBase || DEFAULT_API;
+  loadProjects();
+});
+$("apiBase")?.addEventListener("change", () => {
+  loadProjects();
+  $("project").value = "";
+  $("requirement").innerHTML = '<option value="">不关联</option>';
+});
 refresh();

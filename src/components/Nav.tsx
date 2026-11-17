@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
-  { href: "/", label: "总览" },
+  { href: "/", label: "项目" },
   { href: "/tests", label: "测试用例" },
   { href: "/generate", label: "生成器" },
 ];

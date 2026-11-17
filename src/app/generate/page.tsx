@@ -1,19 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import type { CandidateTest } from "@/lib/ai";
 import { STEP_TYPE_LABELS } from "@/lib/types";
 
 const STEP_TITLES = ["Define Requirements", "Review, Edit and Select", "Generate Test Cases"];
 const STEP_TITLES_ZH = ["填写需求", "评审并选择用例", "生成测试用例"];
 
-export default function GeneratePage() {
+function GeneratePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
   const [url, setUrl] = useState("");
   const [requirements, setRequirements] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [requirementId, setRequirementId] = useState("");
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -21,6 +24,17 @@ export default function GeneratePage() {
   const [candidates, setCandidates] = useState<(CandidateTest & { selected: boolean })[]>([]);
   const [source, setSource] = useState<"ai" | "rule">("ai");
   const [createdIds, setCreatedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const u = searchParams.get("url");
+    const r = searchParams.get("requirements");
+    const pid = searchParams.get("projectId");
+    const rid = searchParams.get("requirementId");
+    if (u) setUrl(u);
+    if (r) setRequirements(r);
+    if (pid) setProjectId(pid);
+    if (rid) setRequirementId(rid);
+  }, [searchParams]);
 
   async function handleSuggest() {
     if (!url.trim() || loading) return;
@@ -63,11 +77,20 @@ export default function GeneratePage() {
             name: c.name,
             description: c.description,
             steps: c.steps,
+            projectId: projectId || undefined,
+            requirementId: requirementId || undefined,
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "创建失败");
         ids.push(data.test.id);
+      }
+      if (requirementId) {
+        await fetch(`/api/requirements/${requirementId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "generated" }),
+        });
       }
       setCreatedIds(ids);
       setStep(2);
@@ -86,6 +109,12 @@ export default function GeneratePage() {
         <h1 className="mb-6 flex items-center gap-2 text-lg font-semibold">
           <span className="text-fuchsia-400">✦</span> 测试用例生成器
         </h1>
+        {projectId && (
+          <p className="mb-4 text-xs text-sky-400">
+            已关联项目
+            {requirementId ? "与需求" : ""}，新建的用例将写入追溯链。
+          </p>
+        )}
 
         {/* 步骤条 */}
         <div className="mx-auto mb-8 flex max-w-2xl items-center">
@@ -256,9 +285,15 @@ export default function GeneratePage() {
                   打开第一个用例
                 </Link>
               )}
-              <button className="btn-ghost" onClick={() => router.push("/tests")}>
-                查看全部用例
-              </button>
+              {projectId ? (
+                <Link href={`/projects/${projectId}`} className="btn-ghost">
+                  回到项目工作台
+                </Link>
+              ) : (
+                <button className="btn-ghost" onClick={() => router.push("/tests")}>
+                  查看全部用例
+                </button>
+              )}
               <button
                 className="btn-ghost"
                 onClick={() => {
@@ -276,5 +311,13 @@ export default function GeneratePage() {
         {error && step > 0 && <p className="text-sm text-rose-400">{error}</p>}
       </div>
     </main>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={<main className="card text-sm text-slate-500">加载中…</main>}>
+      <GeneratePageInner />
+    </Suspense>
   );
 }

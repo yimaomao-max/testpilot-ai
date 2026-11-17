@@ -1,205 +1,197 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-interface Stats {
+interface Project {
+  id: string;
+  name: string;
+  targetUrl: string;
+  description?: string;
+  createdAt: string;
+}
+
+interface StatsLite {
   totalTests: number;
   totalRuns: number;
   passRate: number | null;
-  distribution: { passed: number; failed: number; notRun: number };
-  trend: { date: string; total: number; failed: number }[];
-  tests: {
-    id: string;
-    name: string;
-    url: string;
-    stepCount: number;
-    source: string;
-    updatedAt: string;
-    lastRun: { id: string; status: string; startedAt: string; durationMs: number } | null;
-  }[];
 }
 
-function Donut({ percent }: { percent: number | null }) {
-  const size = 140;
-  const stroke = 16;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const value = percent ?? 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e293b" strokeWidth={stroke} />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={percent === null ? "#475569" : value >= 80 ? "#10b981" : value >= 50 ? "#f59e0b" : "#f43f5e"}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={`${(value / 100) * c} ${c}`}
-      />
-      <text
-        x={size / 2}
-        y={size / 2}
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="fill-slate-100 text-2xl font-bold"
-        transform={`rotate(90 ${size / 2} ${size / 2})`}
-      >
-        {percent === null ? "—" : `${percent}%`}
-      </text>
-    </svg>
-  );
-}
-
-function Bars({ dist }: { dist: { passed: number; failed: number; notRun: number } }) {
-  const items = [
-    { label: "通过", value: dist.passed, color: "bg-emerald-500" },
-    { label: "失败", value: dist.failed, color: "bg-rose-500" },
-    { label: "未运行", value: dist.notRun, color: "bg-slate-600" },
-  ];
-  const max = Math.max(1, ...items.map((i) => i.value));
-  return (
-    <div className="flex h-44 items-end gap-8 px-4">
-      {items.map((i) => (
-        <div key={i.label} className="flex flex-1 flex-col items-center gap-2">
-          <span className="text-sm text-slate-300">{i.value}</span>
-          <div
-            className={`w-full max-w-16 rounded-t ${i.color}`}
-            style={{ height: `${(i.value / max) * 120}px` }}
-          />
-          <span className="text-xs text-slate-500">{i.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Trend({ trend }: { trend: { date: string; total: number; failed: number }[] }) {
-  const w = 560;
-  const h = 160;
-  const max = Math.max(1, ...trend.map((t) => t.total));
-  const pt = (v: number, i: number) =>
-    `${(i / (trend.length - 1)) * (w - 20) + 10},${h - 10 - (v / max) * (h - 30)}`;
-  const totalPts = trend.map((t, i) => pt(t.total, i)).join(" ");
-  const failedPts = trend.map((t, i) => pt(t.failed, i)).join(" ");
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full">
-      <polyline points={totalPts} fill="none" stroke="#38bdf8" strokeWidth="2" />
-      <polyline points={failedPts} fill="none" stroke="#fb7185" strokeWidth="2" />
-      {trend.map((t, i) => (
-        <circle key={i} cx={pt(t.total, i).split(",")[0]} cy={pt(t.total, i).split(",")[1]} r="2.5" fill="#38bdf8" />
-      ))}
-    </svg>
-  );
-}
-
-const STATUS_BADGE: Record<string, string> = {
-  passed: "bg-emerald-950 text-emerald-400",
-  failed: "bg-rose-950 text-rose-400",
-};
-
-export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats | null>(null);
+export default function ProjectsHubPage() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [stats, setStats] = useState<StatsLite | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [targetUrl, setTargetUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.json())
-      .then(setStats)
-      .catch(() => undefined);
+    Promise.all([
+      fetch("/api/projects").then((r) => r.json()),
+      fetch("/api/stats").then((r) => r.json()),
+    ])
+      .then(([p, s]) => {
+        setProjects(p.projects ?? []);
+        setStats({
+          totalTests: s.totalTests ?? 0,
+          totalRuns: s.totalRuns ?? 0,
+          passRate: s.passRate ?? null,
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
-  if (!stats) return <main className="card text-sm text-slate-500">加载中…</main>;
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || creating) return;
+    setCreating(true);
+    setError("");
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, targetUrl, description }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "创建失败");
+      router.push(`/projects/${data.project.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (loading) return <main className="card text-sm text-slate-500">加载中…</main>;
 
   return (
     <main className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">总览</h1>
-        <Link href="/generate" className="btn-primary">
-          ✨ 生成新测试
-        </Link>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">项目工作台</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            需求 → 验收标准 → 用例 → 执行追溯（Phase 2）
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/generate" className="btn-ghost">
+            生成器
+          </Link>
+          <button type="button" className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            + 新建项目
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card flex items-center gap-6">
-          <Donut percent={stats.passRate} />
-          <div className="space-y-2 text-sm">
-            <p className="font-medium text-slate-300">最近一次通过率</p>
-            <p className="text-slate-500">
-              共 {stats.totalTests} 个用例 · 累计 {stats.totalRuns} 次运行
+      {stats && (
+        <section className="grid gap-3 sm:grid-cols-3">
+          <div className="card py-3">
+            <p className="text-xs text-slate-500">测试用例</p>
+            <p className="text-2xl font-semibold text-sky-300">{stats.totalTests}</p>
+          </div>
+          <div className="card py-3">
+            <p className="text-xs text-slate-500">累计运行</p>
+            <p className="text-2xl font-semibold text-slate-200">{stats.totalRuns}</p>
+          </div>
+          <div className="card py-3">
+            <p className="text-xs text-slate-500">最近通过率</p>
+            <p className="text-2xl font-semibold text-emerald-400">
+              {stats.passRate === null ? "—" : `${stats.passRate}%`}
             </p>
-            <div className="flex gap-4 pt-2">
-              <div>
-                <p className="text-xs text-slate-500">通过</p>
-                <p className="text-lg font-semibold text-emerald-400">{stats.distribution.passed}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">失败</p>
-                <p className="text-lg font-semibold text-rose-400">{stats.distribution.failed}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">未运行</p>
-                <p className="text-lg font-semibold text-slate-400">{stats.distribution.notRun}</p>
-              </div>
-            </div>
           </div>
         </section>
+      )}
 
-        <section className="card">
-          <h2 className="mb-2 text-sm font-semibold text-slate-400">用例状态分布</h2>
-          <Bars dist={stats.distribution} />
-        </section>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-5">
-        <section className="card lg:col-span-3">
-          <h2 className="mb-2 text-sm font-semibold text-slate-400">近 14 天运行趋势</h2>
-          <div className="flex gap-4 pb-1 text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <i className="inline-block h-2 w-2 rounded-full bg-sky-400" /> 总运行
-            </span>
-            <span className="flex items-center gap-1">
-              <i className="inline-block h-2 w-2 rounded-full bg-rose-400" /> 失败
-            </span>
+      {showForm && (
+        <form onSubmit={handleCreate} className="card mx-auto max-w-xl space-y-3">
+          <h2 className="text-sm font-semibold text-slate-300">新建项目</h2>
+          <div>
+            <label className="label" htmlFor="proj-name">
+              项目名称 *
+            </label>
+            <input
+              id="proj-name"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例如：官网回归"
+            />
           </div>
-          <Trend trend={stats.trend} />
-          <div className="flex justify-between text-[10px] text-slate-600">
-            {stats.trend.filter((_, i) => i % 3 === 0).map((t) => (
-              <span key={t.date}>{t.date}</span>
+          <div>
+            <label className="label" htmlFor="proj-url">
+              目标站点 URL
+            </label>
+            <input
+              id="proj-url"
+              className="input"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              placeholder="https://example.com"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="proj-desc">
+              备注
+            </label>
+            <input
+              id="proj-desc"
+              className="input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-sm text-rose-400">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" className="btn-primary" disabled={creating}>
+              {creating ? "创建中…" : "创建并进入"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+
+      <section className="card">
+        <h2 className="mb-4 text-sm font-semibold text-slate-400">我的项目</h2>
+        {projects.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-700 px-6 py-10 text-center text-sm text-slate-500">
+            还没有项目。点击「新建项目」开始，或先用{" "}
+            <Link href="/generate" className="text-sky-400 hover:underline">
+              生成器
+            </Link>{" "}
+            快速创建用例。
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-800">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 py-4 transition-colors hover:bg-slate-800/30 px-2 -mx-2 rounded-lg"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-100">{p.name}</p>
+                    {p.targetUrl && (
+                      <p className="truncate text-xs text-slate-500">{p.targetUrl}</p>
+                    )}
+                    {p.description && (
+                      <p className="mt-0.5 text-xs text-slate-600">{p.description}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-sky-400">进入工作台 →</span>
+                </Link>
+              </li>
             ))}
-          </div>
-        </section>
-
-        <section className="card lg:col-span-2 overflow-hidden">
-          <h2 className="mb-3 text-sm font-semibold text-slate-400">用例汇总</h2>
-          <div className="max-h-64 space-y-2 overflow-auto">
-            {stats.tests.length === 0 && (
-              <p className="text-sm text-slate-500">还没有测试用例，去「生成器」创建第一个</p>
-            )}
-            {stats.tests.map((t) => (
-              <Link
-                key={t.id}
-                href={`/tests/${t.id}`}
-                className="flex items-center gap-3 rounded-lg border border-slate-800 px-3 py-2 text-sm hover:border-sky-700"
-              >
-                {t.lastRun ? (
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] ${STATUS_BADGE[t.lastRun.status]}`}>
-                    {t.lastRun.status === "passed" ? "通过" : "失败"}
-                  </span>
-                ) : (
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">未运行</span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{t.name}</span>
-                  <span className="block truncate text-xs text-slate-500">{t.url}</span>
-                </span>
-                <span className="text-xs text-slate-600">{t.stepCount} 步</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      </div>
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

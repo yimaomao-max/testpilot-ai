@@ -1,4 +1,5 @@
-import type { RunResult, StepType, TestStep } from "./types";
+import { newId } from "./storage";
+import type { AcceptanceCriterion, RunResult, Scenario, StepType, TestStep } from "./types";
 
 const API_KEY = process.env.OPENAI_API_KEY || "";
 const BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -209,6 +210,127 @@ export async function analyzeFailure(run: RunResult): Promise<string> {
     }
   }
   return lines.join("\n\n");
+}
+
+// ---------- A1 需求解析（场景 + 验收标准） ----------
+
+const PARSE_REQ_SYSTEM = `你是 BDD/敏捷测试专家。根据用户粘贴的需求文本，提取业务场景与验收标准(AC)。
+只返回 JSON，不要任何多余文字。格式：
+{
+  "scenarios": [
+    { "name": "场景名", "actor": "角色", "preconditions": ["前置条件1"] }
+  ],
+  "acceptanceCriteria": [
+    { "code": "AC-001", "given": "...", "when": "...", "then": "...", "category": "normal|exception|boundary" }
+  ]
+}
+规则：至少 1 个场景、2–8 条 AC；每条 AC 的 when/then 具体可验证；category 默认 normal，异常/边界流程用 exception/boundary。`;
+
+function ruleParseRequirement(
+  requirementText: string,
+  targetUrl?: string
+): { scenarios: Scenario[]; acs: AcceptanceCriterion[] } {
+  const lines = requirementText
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length >= 3);
+
+  const acs: AcceptanceCriterion[] = [];
+  let idx = 0;
+  for (const line of lines) {
+    const when = line.replace(/^[\d.、\-*•]+\s*/, "").slice(0, 160);
+    if (when.length < 3) continue;
+    idx++;
+    acs.push({
+      id: newId("ac"),
+      code: `AC-${String(idx).padStart(3, "0")}`,
+      given: "用户已打开目标系统",
+      when,
+      then: "系统行为符合需求描述",
+      category: "normal",
+    });
+    if (idx >= 8) break;
+  }
+
+  if (acs.length === 0) {
+    acs.push({
+      id: newId("ac"),
+      code: "AC-001",
+      given: "用户访问目标站点",
+      when: "执行基础冒烟验证",
+      then: "页面可访问且核心内容可见",
+      category: "normal",
+    });
+  }
+
+  return {
+    scenarios: [
+      {
+        name: "主业务流程",
+        actor: "终端用户",
+        preconditions: targetUrl ? [`目标 URL: ${targetUrl}`] : undefined,
+      },
+    ],
+    acs,
+  };
+}
+
+function normalizeAcs(raw: unknown[]): AcceptanceCriterion[] {
+  return raw.slice(0, 12).map((item, i) => {
+    const ac = item as Partial<AcceptanceCriterion>;
+    const category =
+      ac.category === "exception" || ac.category === "boundary" ? ac.category : "normal";
+    return {
+      id: newId("ac"),
+      code: typeof ac.code === "string" ? ac.code : `AC-${String(i + 1).padStart(3, "0")}`,
+      given: typeof ac.given === "string" ? ac.given.slice(0, 200) : "系统处于可测试状态",
+      when: typeof ac.when === "string" ? ac.when.slice(0, 200) : "执行操作",
+      then: typeof ac.then === "string" ? ac.then.slice(0, 200) : "结果符合预期",
+      category,
+    };
+  });
+}
+
+export async function parseRequirementText(
+  requirementText: string,
+  targetUrl?: string
+): Promise<{ scenarios: Scenario[]; acs: AcceptanceCriterion[]; source: "ai" | "rule" }> {
+  const trimmed = requirementText.trim();
+  if (!trimmed) {
+    const fb = ruleParseRequirement("冒烟测试", targetUrl);
+    return { ...fb, source: "rule" };
+  }
+
+  const user = `目标站点（上下文）：${targetUrl || "未提供"}\n\n需求原文：\n${trimmed}`;
+  const content = await chat(PARSE_REQ_SYSTEM, user, 2500);
+  if (content) {
+    try {
+      const parsed = extractJson(content) as {
+        scenarios?: Partial<Scenario>[];
+        acceptanceCriteria?: unknown[];
+      };
+      const scenarios: Scenario[] =
+        Array.isArray(parsed.scenarios) && parsed.scenarios.length > 0
+          ? parsed.scenarios.slice(0, 5).map((s) => ({
+              name: typeof s.name === "string" ? s.name.slice(0, 60) : "场景",
+              actor: typeof s.actor === "string" ? s.actor : undefined,
+              preconditions: Array.isArray(s.preconditions)
+                ? s.preconditions.filter((p): p is string => typeof p === "string").slice(0, 5)
+                : undefined,
+            }))
+          : [{ name: "主业务流程", actor: "用户" }];
+
+      if (Array.isArray(parsed.acceptanceCriteria) && parsed.acceptanceCriteria.length > 0) {
+        const acs = normalizeAcs(parsed.acceptanceCriteria);
+        if (acs.length > 0) return { scenarios, acs, source: "ai" };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const fb = ruleParseRequirement(trimmed, targetUrl);
+  return { ...fb, source: "rule" };
 }
 
 // ---------- 生成候选测试用例（生成器向导） ----------
